@@ -2,90 +2,99 @@
 """
 Email Alias Generator
 
-Generates unique email aliases that all route to a single Gmail inbox
-using Gmail's '+' aliasing feature.
+Generates unique email aliases that all route to a single Gmail inbox.
+Uses two Gmail tricks:
+  1. Dot trick: Gmail ignores dots in the local part, so
+     j.asonleejfl and jason.le.ejfl both deliver to jasonleejfl@gmail.com
+  2. Plus trick: anything after '+' is ignored, so
+     jasonleejfl+xyz@gmail.com delivers to jasonleejfl@gmail.com
 
 All generated emails deliver to: jason.lee.jfl@gmail.com
 """
 
 import random
-import string
 import json
 import csv
 import sys
+from itertools import combinations
 from datetime import datetime
 
 BASE_EMAIL = "jason.lee.jfl@gmail.com"
-LOCAL_PART, DOMAIN = BASE_EMAIL.split("@")
-
-# Word pools for generating natural-looking aliases
-ADJECTIVES = [
-    "swift", "bold", "keen", "calm", "warm", "cool", "bright", "sharp",
-    "quick", "smart", "fresh", "grand", "prime", "noble", "vivid", "lucid",
-    "agile", "witty", "brave", "sleek", "crisp", "neat", "fair", "fine",
-    "glad", "wise", "pure", "rare", "free", "true", "dark", "deep",
-]
-
-NOUNS = [
-    "falcon", "cedar", "river", "atlas", "spark", "flint", "grove", "ridge",
-    "arrow", "ember", "crane", "drift", "frost", "blade", "stone", "brook",
-    "cliff", "trail", "storm", "coral", "north", "steel", "tiger", "maple",
-    "orbit", "quest", "pixel", "nexus", "prism", "pulse", "sigma", "theta",
-]
-
-ACTIVITIES = [
-    "hiker", "coder", "reader", "runner", "rider", "maker", "writer", "gamer",
-    "baker", "diver", "pilot", "scout", "racer", "sailor", "builder", "dreamer",
-]
+# Gmail strips dots, so the canonical form is without dots
+LOCAL_PART = BASE_EMAIL.split("@")[0].replace(".", "")  # "jasonleejfl"
+DOMAIN = "gmail.com"
 
 
-def generate_alias_tag(style: str = "random") -> str:
-    """Generate a unique alias tag to insert after the '+' in the email."""
-    if style == "word":
-        adj = random.choice(ADJECTIVES)
-        noun = random.choice(NOUNS)
-        num = random.randint(1, 999)
-        return f"{adj}.{noun}{num}"
+def get_all_dot_variants(local: str) -> list[str]:
+    """
+    Generate all possible dot placements for a Gmail local part.
+    Dots can go between any two characters. For a string of length N,
+    there are N-1 possible dot positions, giving 2^(N-1) variants.
+    """
+    if len(local) < 2:
+        return [local]
 
-    elif style == "activity":
-        activity = random.choice(ACTIVITIES)
-        adj = random.choice(ADJECTIVES)
-        num = random.randint(10, 99)
-        return f"{activity}.{adj}{num}"
+    # Positions where dots can be inserted (between each pair of chars)
+    positions = list(range(1, len(local)))
+    variants = []
 
-    elif style == "alphanumeric":
-        letters = "".join(random.choices(string.ascii_lowercase, k=5))
-        digits = "".join(random.choices(string.digits, k=3))
-        return f"{letters}{digits}"
+    # Every subset of positions gives a unique variant
+    for r in range(len(positions) + 1):
+        for combo in combinations(positions, r):
+            parts = []
+            prev = 0
+            for pos in combo:
+                parts.append(local[prev:pos])
+                prev = pos
+            parts.append(local[prev:])
+            variants.append(".".join(parts))
 
-    elif style == "date":
-        now = datetime.now()
-        rand = "".join(random.choices(string.ascii_lowercase, k=4))
-        return f"{now.strftime('%Y%m%d')}.{rand}"
-
-    else:  # mixed random
-        style = random.choice(["word", "activity", "alphanumeric", "date"])
-        return generate_alias_tag(style)
+    return variants
 
 
 def generate_emails(count: int = 50) -> list[dict]:
-    """Generate a list of unique email aliases with metadata."""
+    """Generate a list of unique email aliases using dot variants."""
+    all_variants = get_all_dot_variants(LOCAL_PART)
+    random.shuffle(all_variants)
+
+    # If they need more than dot variants alone, add +tag combos
+    if count > len(all_variants):
+        print(f"Note: {len(all_variants)} dot variants available. "
+              f"Using +suffix for the remaining {count - len(all_variants)}.")
+
     emails = []
-    seen_tags = set()
+    used = set()
 
+    # Phase 1: pure dot variants (look most natural — no '+' visible)
+    for v in all_variants:
+        if len(emails) >= count:
+            break
+        addr = f"{v}@{DOMAIN}"
+        if addr not in used:
+            used.add(addr)
+            emails.append({
+                "alias": addr,
+                "routes_to": BASE_EMAIL,
+                "style": "dot",
+                "created": datetime.now().isoformat(),
+            })
+
+    # Phase 2: if we still need more, add +suffix variants on top of dot variants
+    suffixes = list(range(1, 10000))
+    random.shuffle(suffixes)
+    si = 0
     while len(emails) < count:
-        tag = generate_alias_tag()
-        if tag in seen_tags:
-            continue
-        seen_tags.add(tag)
-
-        alias = f"{LOCAL_PART}+{tag}@{DOMAIN}"
-        emails.append({
-            "alias": alias,
-            "routes_to": BASE_EMAIL,
-            "tag": tag,
-            "created": datetime.now().isoformat(),
-        })
+        base_variant = random.choice(all_variants)
+        addr = f"{base_variant}+{suffixes[si]}@{DOMAIN}"
+        si += 1
+        if addr not in used:
+            used.add(addr)
+            emails.append({
+                "alias": addr,
+                "routes_to": BASE_EMAIL,
+                "style": "dot+suffix",
+                "created": datetime.now().isoformat(),
+            })
 
     return emails
 
@@ -103,7 +112,7 @@ def save_emails(emails: list[dict], fmt: str = "all"):
     if fmt in ("all", "csv"):
         path = f"emails_{timestamp}.csv"
         with open(path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=["alias", "routes_to", "tag", "created"])
+            writer = csv.DictWriter(f, fieldnames=["alias", "routes_to", "style", "created"])
             writer.writeheader()
             writer.writerows(emails)
         print(f"Saved CSV   -> {path}")
@@ -120,13 +129,17 @@ def main():
     count = int(sys.argv[1]) if len(sys.argv) > 1 else 50
     fmt = sys.argv[2] if len(sys.argv) > 2 else "all"
 
-    print(f"Generating {count} email aliases routing to {BASE_EMAIL}\n")
+    total_dot_variants = 2 ** (len(LOCAL_PART) - 1)
+    print(f"Base: {BASE_EMAIL}  (canonical: {LOCAL_PART}@{DOMAIN})")
+    print(f"Total possible dot variants: {total_dot_variants:,}")
+    print(f"Generating {count} aliases...\n")
+
     emails = generate_emails(count)
 
-    print(f"{'#':<4} {'Alias':<55} {'Tag'}")
-    print("-" * 80)
+    print(f"{'#':<4} {'Alias':<45} {'Style'}")
+    print("-" * 65)
     for i, e in enumerate(emails, 1):
-        print(f"{i:<4} {e['alias']:<55} {e['tag']}")
+        print(f"{i:<4} {e['alias']:<45} {e['style']}")
 
     print()
     save_emails(emails, fmt)
