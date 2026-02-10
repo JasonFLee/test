@@ -56,12 +56,6 @@ LAST_NAMES = [
     "quinn", "bloom", "norton", "chang", "silva", "pham", "chen", "ngo",
 ]
 
-# Common email providers to mix in for realism
-DOMAINS = [
-    "gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "protonmail.com",
-    "icloud.com", "aol.com", "mail.com", "zoho.com", "yandex.com",
-    "fastmail.com", "tutanota.com", "gmx.com", "inbox.com", "live.com",
-]
 
 
 def _pattern_firstlast(first: str, last: str, num: str) -> str:
@@ -121,32 +115,24 @@ PATTERNS = [
 ]
 
 
-def generate_email() -> str:
-    """Generate a single realistic-looking email address."""
+def generate_local_part() -> str:
+    """Generate a single realistic-looking email local part."""
     first = random.choice(FIRST_NAMES)
     last = random.choice(LAST_NAMES)
     # ~40% chance of no number, otherwise 1-2 digit suffix
-    if random.random() < 0.4:
-        num = ""
-    else:
-        num = str(random.randint(1, 99))
-    domain = random.choice(DOMAINS)
+    num = "" if random.random() < 0.4 else str(random.randint(1, 99))
     pattern = random.choice(PATTERNS)
-    local = pattern(first, last, num)
-    return f"{local}@{domain}"
+    return pattern(first, last, num)
 
 
-def generate_emails(count: int = 50, custom_domain: str = None) -> list[dict]:
-    """Generate a list of unique realistic email addresses."""
+def generate_emails(count: int = 50, domain: str = "example.com") -> list[dict]:
+    """Generate a list of unique realistic email addresses on your domain."""
     emails = []
     seen = set()
 
     while len(emails) < count:
-        addr = generate_email()
-        # If using a custom catch-all domain, swap the domain
-        if custom_domain:
-            local = addr.split("@")[0]
-            addr = f"{local}@{custom_domain}"
+        local = generate_local_part()
+        addr = f"{local}@{domain}"
         if addr in seen:
             continue
         seen.add(addr)
@@ -186,17 +172,28 @@ def save_emails(emails: list[dict], fmt: str = "all"):
 
 
 def main():
-    count = int(sys.argv[1]) if len(sys.argv) > 1 else 50
-    fmt = sys.argv[2] if len(sys.argv) > 2 else "all"
-    # Optional: pass your catch-all domain as 3rd arg
-    custom_domain = sys.argv[3] if len(sys.argv) > 3 else None
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: python3 email_generator.py <your-domain.com> [count] [format]")
+        print()
+        print("  your-domain.com  Your catch-all domain (REQUIRED)")
+        print("  count            Number of emails to generate (default: 50)")
+        print("  format           Output format: all, json, csv, txt (default: all)")
+        print()
+        print("Example: python3 email_generator.py mydomain.com 100 txt")
+        print()
+        print("Setup: Configure catch-all forwarding on your domain so that")
+        print("       *@your-domain.com forwards to your real inbox.")
+        print("       Cloudflare Email Routing does this for free.")
+        sys.exit(1)
 
-    if custom_domain:
-        print(f"Using catch-all domain: {custom_domain}")
-    print(f"All emails route to: {ROUTE_TO}")
+    domain = sys.argv[1]
+    count = int(sys.argv[2]) if len(sys.argv) > 2 else 50
+    fmt = sys.argv[3] if len(sys.argv) > 3 else "all"
+
+    print(f"Domain: {domain}  (catch-all -> {ROUTE_TO})")
     print(f"Generating {count} unique addresses...\n")
 
-    emails = generate_emails(count, custom_domain)
+    emails = generate_emails(count, domain)
 
     print(f"{'#':<5} {'Email'}")
     print("-" * 50)
@@ -205,13 +202,7 @@ def main():
 
     print()
     save_emails(emails, fmt)
-    print(f"\nDone. {count} addresses generated.")
-    if not custom_domain:
-        print("\nIMPORTANT: These are real-looking addresses on public domains.")
-        print("To actually receive mail, you need one of:")
-        print("  1. A catch-all domain: python3 email_generator.py 50 all yourdomain.com")
-        print("  2. A forwarding service (SimpleLogin, addy.io, Firefox Relay)")
-        print("     to create aliases that forward to your inbox.")
+    print(f"\nDone. {count} addresses generated, all routing to {ROUTE_TO}.")
 
 
 if __name__ == "__main__":
