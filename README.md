@@ -17,6 +17,23 @@ pip install -r requirements.txt
 
 ## Quick Start
 
+### Web GUI (Recommended)
+
+```bash
+# Launch the interactive web interface
+python gui.py
+
+# With API keys for deeper search
+python gui.py --serpapi-key YOUR_KEY --bing-key YOUR_KEY
+
+# Custom port
+python gui.py --port 8080
+```
+
+Then open http://localhost:5000 in your browser. Drag & drop a face photo, hit search, and click any matched face to open the source page.
+
+### Command Line
+
 ```bash
 # Basic usage - runs direct searches + generates manual search links
 python face_finder.py photo.jpg
